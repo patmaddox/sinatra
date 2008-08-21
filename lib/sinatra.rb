@@ -798,9 +798,26 @@ module Sinatra
     end
     
     def params
-      @params ||= begin 
+      @params ||= begin
         h = Hash.new {|h,k| h[k.to_s] if Symbol === k}
-        h.merge(@route_params.merge(@request.params))
+        h.merge!(@route_params.merge(@request.params))
+
+        parse_nested_params = lambda do |hash|
+          hash.each do |k, v|
+            if k =~ /(.*?)\[(.*?)\](.*)/
+              hash.delete k
+              new_key = $1
+              nested = parse_nested_params[$2 + $3.to_s => v]
+              if hash[new_key]
+                hash[new_key].deep_merge!(nested)
+              else
+                hash[new_key] = nested
+              end
+            end
+          end
+        end
+        parse_nested_params[h]
+        h
       end
     end
 
@@ -1428,7 +1445,16 @@ class Hash
   def pass(*keys)
     reject { |k,v| !keys.include?(k) }
   end
-  
+
+  def deep_merge!(second)
+    second.each_pair do |k,v|
+      if self[k].is_a?(Hash) and second[k].is_a?(Hash)
+        self[k].deep_merge!(second[k])
+      else
+        self[k] = second[k]
+      end
+    end
+  end
 end
 
 class Symbol
